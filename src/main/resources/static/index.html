@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remittance Optimizer</title>
+    <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+            background: #f0f4f8;
+            color: #1a202c;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #1a365d 0%, #2b6cb0 50%, #38a169 100%);
+            padding: 28px 0;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .header h1 {
+            color: #ffffff;
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .header p {
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 1rem;
+            margin-top: 6px;
+        }
+
+        /* Container */
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 32px 20px;
+        }
+
+        /* Form Card */
+        .form-card {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+            margin-bottom: 28px;
+        }
+
+        .form-card h2 {
+            font-size: 1.25rem;
+            color: #2d3748;
+            margin-bottom: 24px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .form-group label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #4a5568;
+            margin-bottom: 6px;
+        }
+
+        .form-group input,
+        .form-group select {
+            padding: 12px 14px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 1rem;
+            color: #2d3748;
+            background: #f7fafc;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            outline: none;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            border-color: #2b6cb0;
+            box-shadow: 0 0 0 3px rgba(43, 108, 176, 0.15);
+            background: #ffffff;
+        }
+
+        .btn-compare {
+            grid-column: 1 / -1;
+            margin-top: 8px;
+            padding: 14px 32px;
+            background: linear-gradient(135deg, #2b6cb0, #38a169);
+            color: #ffffff;
+            font-size: 1.05rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+            box-shadow: 0 4px 14px rgba(43, 108, 176, 0.35);
+        }
+
+        .btn-compare:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(43, 108, 176, 0.45);
+        }
+
+        .btn-compare:active {
+            transform: translateY(0);
+            opacity: 0.9;
+        }
+
+        .btn-compare:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Recommendation Banner */
+        .recommendation-banner {
+            background: linear-gradient(135deg, #ebf8ff, #c6f6d5);
+            border-left: 5px solid #38a169;
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+            font-size: 1rem;
+            line-height: 1.6;
+            color: #22543d;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+            display: none;
+        }
+
+        .recommendation-banner.visible {
+            display: block;
+        }
+
+        /* Results */
+        .results-title {
+            font-size: 1.15rem;
+            color: #2d3748;
+            margin-bottom: 16px;
+            display: none;
+        }
+
+        .results-title.visible {
+            display: block;
+        }
+
+        .results-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .result-card {
+            background: #ffffff;
+            border-radius: 14px;
+            padding: 22px 26px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            border: 2px solid transparent;
+            transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .result-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+        }
+
+        .result-card.best {
+            border-color: #38a169;
+            background: linear-gradient(135deg, #f0fff4 0%, #ffffff 100%);
+            box-shadow: 0 4px 18px rgba(56, 161, 105, 0.15);
+        }
+
+        .best-badge {
+            display: none;
+            background: linear-gradient(135deg, #38a169, #2f855a);
+            color: #ffffff;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 4px 12px;
+            border-radius: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .result-card.best .best-badge {
+            display: inline-block;
+        }
+
+        .channel-name {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #2d3748;
+        }
+
+        .channel-details {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-top: 10px;
+        }
+
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .detail-label {
+            font-size: 0.75rem;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .detail-value {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #2d3748;
+            margin-top: 2px;
+        }
+
+        .detail-value.received {
+            color: #38a169;
+            font-size: 1.15rem;
+        }
+
+        .amount-column {
+            text-align: right;
+        }
+
+        .amount-column .detail-value {
+            font-size: 1.3rem;
+            color: #38a169;
+            font-weight: 700;
+        }
+
+        /* Loading / Empty states */
+        .loading-text {
+            text-align: center;
+            color: #718096;
+            padding: 40px 0;
+            font-size: 1rem;
+            display: none;
+        }
+
+        .loading-text.visible {
+            display: block;
+        }
+
+        .error-text {
+            text-align: center;
+            color: #e53e3e;
+            padding: 20px 0;
+            font-size: 0.95rem;
+            display: none;
+        }
+
+        .error-text.visible {
+            display: block;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .result-card {
+                grid-template-columns: 1fr;
+            }
+
+            .amount-column {
+                text-align: left;
+            }
+
+            .channel-details {
+                gap: 14px;
+            }
+
+            .header h1 {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Remittance Optimizer</h1>
+    <p>Compare transfer rates and find the best deal for your money</p>
+</div>
+
+<div class="container">
+    <div class="form-card">
+        <h2>Transfer Details</h2>
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="amount">Amount to Send</label>
+                <input type="number" id="amount" placeholder="e.g. 1000" min="1" step="any" value="1000">
+            </div>
+
+            <div class="form-group">
+                <label for="sourceCountry">Source Country</label>
+                <select id="sourceCountry">
+                    <option value="USA" data-currency="USD">USA</option>
+                    <option value="UK" data-currency="GBP">UK</option>
+                    <option value="UAE" data-currency="AED">UAE</option>
+                    <option value="Saudi Arabia" data-currency="SAR">Saudi Arabia</option>
+                    <option value="Canada" data-currency="CAD">Canada</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="sourceCurrency">Source Currency</label>
+                <input type="text" id="sourceCurrency" value="USD" readonly>
+            </div>
+
+            <div class="form-group">
+                <label for="destinationCountry">Destination Country</label>
+                <input type="text" id="destinationCountry" value="Pakistan" readonly>
+            </div>
+
+            <button class="btn-compare" id="compareBtn" onclick="compareRates()">
+                Compare Rates
+            </button>
+        </div>
+    </div>
+
+    <div class="recommendation-banner" id="recommendation"></div>
+
+    <h3 class="results-title" id="resultsTitle">Comparison Results</h3>
+
+    <div class="loading-text" id="loading">Comparing rates across channels...</div>
+    <div class="error-text" id="error"></div>
+
+    <div class="results-grid" id="resultsGrid"></div>
+</div>
+
+<script>
+    // Auto-fill currency based on country selection
+    const countrySelect = document.getElementById('sourceCountry');
+    const currencyInput = document.getElementById('sourceCurrency');
+
+    countrySelect.addEventListener('change', function () {
+        const selected = this.options[this.selectedIndex];
+        currencyInput.value = selected.getAttribute('data-currency');
+    });
+
+    async function compareRates() {
+        const amount = document.getElementById('amount').value;
+        const sourceCountry = countrySelect.value;
+        const sourceCurrency = currencyInput.value;
+
+        const resultsGrid = document.getElementById('resultsGrid');
+        const recommendation = document.getElementById('recommendation');
+        const resultsTitle = document.getElementById('resultsTitle');
+        const loading = document.getElementById('loading');
+        const errorEl = document.getElementById('error');
+        const btn = document.getElementById('compareBtn');
+
+        // Reset state
+        resultsGrid.innerHTML = '';
+        recommendation.classList.remove('visible');
+        resultsTitle.classList.remove('visible');
+        errorEl.classList.remove('visible');
+        loading.classList.add('visible');
+        btn.disabled = true;
+
+        if (!amount || parseFloat(amount) <= 0) {
+            loading.classList.remove('visible');
+            errorEl.textContent = 'Please enter a valid amount to send.';
+            errorEl.classList.add('visible');
+            btn.disabled = false;
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/remittance/compare', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    amount: parseFloat(amount),
+                    sourceCountry: sourceCountry,
+                    sourceCurrency: sourceCurrency,
+                    destinationCountry: 'Pakistan',
+                    destinationCurrency: 'PKR'
+                })
+            });
+
+            if (!response.ok) throw new Error('Server returned ' + response.status);
+
+            const data = await response.json();
+            renderResults(data);
+        } catch (err) {
+            errorEl.textContent = 'Failed to fetch comparison. Make sure the server is running. (' + err.message + ')';
+            errorEl.classList.add('visible');
+        } finally {
+            loading.classList.remove('visible');
+            btn.disabled = false;
+        }
+    }
+
+    function renderResults(data) {
+        const grid = document.getElementById('resultsGrid');
+        const recommendation = document.getElementById('recommendation');
+        const resultsTitle = document.getElementById('resultsTitle');
+
+        resultsTitle.classList.add('visible');
+        recommendation.textContent = data.recommendation;
+        recommendation.classList.add('visible');
+
+        data.results.forEach(function (result, index) {
+            const isBest = index === 0;
+            const card = document.createElement('div');
+            card.className = 'result-card' + (isBest ? ' best' : '');
+
+            const feeDisplay = result.feeType === 'PERCENTAGE'
+                ? '$' + formatNumber(result.feeAmount)
+                : '$' + formatNumber(result.feeAmount) + ' flat';
+
+            card.innerHTML =
+                '<div>' +
+                    '<div style="display:flex;align-items:center;gap:10px;">' +
+                        '<span class="channel-name">' + result.channelName + '</span>' +
+                        '<span class="best-badge">Best Value</span>' +
+                    '</div>' +
+                    '<div class="channel-details">' +
+                        '<div class="detail-item">' +
+                            '<span class="detail-label">Exchange Rate</span>' +
+                            '<span class="detail-value">' + formatNumber(result.exchangeRate, 4) + ' PKR</span>' +
+                        '</div>' +
+                        '<div class="detail-item">' +
+                            '<span class="detail-label">Fee</span>' +
+                            '<span class="detail-value">' + feeDisplay + '</span>' +
+                        '</div>' +
+                        '<div class="detail-item">' +
+                            '<span class="detail-label">Speed</span>' +
+                            '<span class="detail-value">' + result.estimatedSpeed + '</span>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="amount-column">' +
+                    '<span class="detail-label">You Receive</span>' +
+                    '<div class="detail-value">' + formatNumber(result.amountReceived) + ' PKR</div>' +
+                '</div>';
+
+            grid.appendChild(card);
+        });
+    }
+
+    function formatNumber(num, decimals) {
+        if (decimals !== undefined) {
+            return parseFloat(num).toLocaleString('en-US', {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals
+            });
+        }
+        return parseFloat(num).toLocaleString('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    }
+</script>
+
+</body>
+</html>
