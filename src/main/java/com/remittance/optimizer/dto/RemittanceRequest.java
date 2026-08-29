@@ -16,4 +16,5 @@ public class RemittanceRequest {
     private String sourceCurrency;
     private String destinationCountry = "Pakistan";
     private String destinationCurrency = "PKR";
+    private Priority priority = Priority.CHEAPEST;
 }
