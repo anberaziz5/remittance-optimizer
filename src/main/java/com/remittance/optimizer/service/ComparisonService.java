@@ -18,6 +18,10 @@ public class ComparisonService {
     private static final MathContext MC = new MathContext(10, RoundingMode.HALF_UP);
     private static final int SCALE = 2;
 
+    private static final BigDecimal WEIGHT_AMOUNT = new BigDecimal("0.5");
+    private static final BigDecimal WEIGHT_SPEED = new BigDecimal("0.5");
+    private static final BigDecimal MAX_AMOUNT = new BigDecimal("1000000000"); // 1 billion USD
+
     // Speed ranks: 1 = fastest, higher = slower
     private static final Map<String, Integer> SPEED_RANKS = Map.of(
             "JazzCash/Easypaisa", 1,
@@ -33,18 +37,24 @@ public class ComparisonService {
     private static final List<ChannelData> CHANNELS = List.of(
             new ChannelData("Bank Wire",           new BigDecimal("0.015"), new BigDecimal("30.00"), FeeType.FLAT,       "2-5 days"),
             new ChannelData("Western Union",       new BigDecimal("0.010"), new BigDecimal("8.00"),  FeeType.FLAT,       "Minutes to 1 day"),
-            new ChannelData("Wise",                new BigDecimal("0.003"), new BigDecimal("0.006"), FeeType.PERCENTAGE,  "1-2 days"),
+            new ChannelData("Wise",                new BigDecimal("0.003"), new BigDecimal("0.006"), FeeType.PERCENTAGE, "1-2 days"),
             new ChannelData("JazzCash/Easypaisa",  new BigDecimal("0.005"), new BigDecimal("2.00"),  FeeType.FLAT,       "Instant"),
             new ChannelData("Remitly",             new BigDecimal("0.008"), new BigDecimal("5.00"),  FeeType.FLAT,       "Minutes to 1 day")
     );
 
     public RemittanceResponse compare(RemittanceRequest request) {
+        validateRequest(request);
+
         BigDecimal amount = request.getAmount();
         Priority priority = request.getPriority() != null ? request.getPriority() : Priority.CHEAPEST;
 
         List<RemittanceResult> results = CHANNELS.stream()
                 .map(ch -> buildChannelResult(ch, amount))
                 .collect(Collectors.toCollection(ArrayList::new));
+
+        if (results.isEmpty()) {
+            throw new IllegalStateException("No remittance channels are currently configured");
+        }
 
         sortByPriority(results, priority);
 
@@ -61,22 +71,52 @@ public class ComparisonService {
                 .build();
     }
 
+    private void validateRequest(RemittanceRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Request body is required");
+        }
+        if (request.getAmount() == null) {
+            throw new IllegalArgumentException("Amount is required");
+        }
+        if (request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Amount must be greater than zero");
+        }
+        if (request.getAmount().compareTo(MAX_AMOUNT) > 0) {
+            throw new IllegalArgumentException("Amount exceeds the maximum allowed value of " + MAX_AMOUNT);
+        }
+        if (request.getSourceCurrency() == null || request.getSourceCurrency().isBlank()) {
+            throw new IllegalArgumentException("Source currency is required");
+        }
+        if (!"USD".equalsIgnoreCase(request.getSourceCurrency())) {
+            throw new IllegalArgumentException("Only USD is supported as the source currency in this demo");
+        }
+        if (request.getDestinationCurrency() == null || request.getDestinationCurrency().isBlank()) {
+            throw new IllegalArgumentException("Destination currency is required");
+        }
+        if (!"PKR".equalsIgnoreCase(request.getDestinationCurrency())) {
+            throw new IllegalArgumentException("Only PKR is supported as the destination currency in this demo");
+        }
+    }
+
     // ---- Sorting ----
 
     private void sortByPriority(List<RemittanceResult> results, Priority priority) {
         switch (priority) {
             case CHEAPEST ->
-                    results.sort(Comparator.comparing(RemittanceResult::getAmountReceived).reversed());
+                    results.sort(Comparator
+                            .comparing(RemittanceResult::getAmountReceived).reversed()
+                            .thenComparing(RemittanceResult::getChannelName));
 
             case FASTEST ->
                     results.sort(Comparator
                             .comparingInt((RemittanceResult r) -> getSpeedRank(r.getChannelName()))
-                            .thenComparing(Comparator.comparing(RemittanceResult::getAmountReceived).reversed()));
+                            .thenComparing(Comparator.comparing(RemittanceResult::getAmountReceived).reversed())
+                            .thenComparing(RemittanceResult::getChannelName));
 
             case BALANCED -> {
                 BigDecimal maxAmount = results.stream()
                         .map(RemittanceResult::getAmountReceived)
-                        .max(BigDecimal::compareTo).orElse(BigDecimal.ONE);
+                        .max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
                 BigDecimal minAmount = results.stream()
                         .map(RemittanceResult::getAmountReceived)
                         .min(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
@@ -84,45 +124,53 @@ public class ComparisonService {
 
                 int maxSpeed = results.stream().mapToInt(r -> getSpeedRank(r.getChannelName())).max().orElse(1);
                 int minSpeed = results.stream().mapToInt(r -> getSpeedRank(r.getChannelName())).min().orElse(1);
-                double speedRange = maxSpeed - minSpeed;
+                int speedRange = maxSpeed - minSpeed;
 
                 results.sort((a, b) -> {
-                    double scoreA = computeBalancedScore(a, amountRange, minAmount, speedRange, minSpeed);
-                    double scoreB = computeBalancedScore(b, amountRange, minAmount, speedRange, minSpeed);
-                    return Double.compare(scoreB, scoreA);
+                    BigDecimal scoreA = computeBalancedScore(a, amountRange, minAmount, maxSpeed, minSpeed, speedRange);
+                    BigDecimal scoreB = computeBalancedScore(b, amountRange, minAmount, maxSpeed, minSpeed, speedRange);
+                    int comparison = scoreB.compareTo(scoreA);
+                    return comparison != 0 ? comparison : a.getChannelName().compareTo(b.getChannelName());
                 });
             }
         }
     }
 
     private int getSpeedRank(String channelName) {
-        return SPEED_RANKS.getOrDefault(channelName, 5);
+        Integer rank = SPEED_RANKS.get(channelName);
+        if (rank == null) {
+            throw new IllegalStateException("No speed rank configured for channel: " + channelName);
+        }
+        return rank;
     }
 
     /**
      * Normalized combined score: 50% weight on amount received, 50% on speed.
      * Both dimensions are normalized to [0, 1] before combining.
+     * The entire calculation stays in BigDecimal to avoid floating-point drift.
      */
-    private double computeBalancedScore(RemittanceResult result,
-                                        BigDecimal amountRange, BigDecimal minAmount,
-                                        double speedRange, int minSpeed) {
-        double amountScore;
+    private BigDecimal computeBalancedScore(RemittanceResult result,
+                                            BigDecimal amountRange, BigDecimal minAmount,
+                                            int maxSpeed, int minSpeed, int speedRange) {
+        BigDecimal amountScore;
         if (amountRange.compareTo(BigDecimal.ZERO) == 0) {
-            amountScore = 1.0;
+            amountScore = BigDecimal.ONE;
         } else {
             amountScore = result.getAmountReceived().subtract(minAmount)
-                    .divide(amountRange, MC).doubleValue();
+                    .divide(amountRange, MC);
         }
 
-        double speedScore;
+        BigDecimal speedScore;
         if (speedRange == 0) {
-            speedScore = 1.0;
+            speedScore = BigDecimal.ONE;
         } else {
             // Lower speedRank = faster = better, so invert
-            speedScore = 1.0 - ((getSpeedRank(result.getChannelName()) - minSpeed) / speedRange);
+            BigDecimal speedOffset = BigDecimal.valueOf(maxSpeed - getSpeedRank(result.getChannelName()));
+            speedScore = speedOffset.divide(BigDecimal.valueOf(speedRange), MC);
         }
 
-        return (0.5 * amountScore) + (0.5 * speedScore);
+        return amountScore.multiply(WEIGHT_AMOUNT, MC)
+                .add(speedScore.multiply(WEIGHT_SPEED, MC), MC);
     }
 
     // ---- Channel calculation ----
@@ -137,7 +185,7 @@ public class ComparisonService {
         if (ch.feeType() == FeeType.PERCENTAGE) {
             feeAmount = amount.multiply(ch.feeValue(), MC).setScale(SCALE, RoundingMode.HALF_UP);
         } else {
-            feeAmount = ch.feeValue();
+            feeAmount = ch.feeValue().setScale(SCALE, RoundingMode.HALF_UP);
         }
 
         // Amount after deducting fee, then converted at channel rate
@@ -161,7 +209,7 @@ public class ComparisonService {
                                        BigDecimal amount, Priority priority) {
         return switch (priority) {
             case CHEAPEST -> {
-                BigDecimal savings = best.getAmountReceived().subtract(worst.getAmountReceived());
+                BigDecimal savings = computeSavings(best, worst);
                 yield String.format(
                         "%s is the best option for sending $%s — you'll receive %s PKR, which is %s PKR more than %s (the most expensive option).",
                         best.getChannelName(), amount.toPlainString(),
@@ -173,7 +221,7 @@ public class ComparisonService {
                     best.getChannelName(), best.getEstimatedSpeed().toLowerCase(),
                     best.getAmountReceived().toPlainString());
             case BALANCED -> {
-                BigDecimal savings = best.getAmountReceived().subtract(worst.getAmountReceived());
+                BigDecimal savings = computeSavings(best, worst);
                 yield String.format(
                         "%s offers the best balance of speed and value for $%s — delivering %s PKR in %s, saving you %s PKR over %s.",
                         best.getChannelName(), amount.toPlainString(),
@@ -182,5 +230,9 @@ public class ComparisonService {
                         savings.toPlainString(), worst.getChannelName());
             }
         };
+    }
+
+    private BigDecimal computeSavings(RemittanceResult best, RemittanceResult worst) {
+        return best.getAmountReceived().subtract(worst.getAmountReceived());
     }
 }

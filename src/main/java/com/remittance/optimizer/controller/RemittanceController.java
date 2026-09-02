@@ -3,6 +3,7 @@ package com.remittance.optimizer.controller;
 import com.remittance.optimizer.dto.RemittanceRequest;
 import com.remittance.optimizer.dto.RemittanceResponse;
 import com.remittance.optimizer.service.ComparisonService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,7 +18,7 @@ public class RemittanceController {
     }
 
     @PostMapping("/compare")
-    public ResponseEntity<RemittanceResponse> compare(@RequestBody RemittanceRequest request) {
+    public ResponseEntity<RemittanceResponse> compare(@Valid @RequestBody RemittanceRequest request) {
         RemittanceResponse response = comparisonService.compare(request);
         return ResponseEntity.ok(response);
     }
