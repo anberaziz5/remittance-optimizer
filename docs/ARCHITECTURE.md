@@ -6,37 +6,40 @@ Welcome to the Remittance Optimizer. This guide explains the system's architectu
 
 ## 1. High-Level Overview
 
-The Remittance Optimizer is a small Spring Boot web application that helps users compare remittance transfer options. A user enters how much money they want to send, where they're sending it from, and what matters most to them (cheapest, fastest, or balanced). The system then ranks available remittance channels and recommends the best one.
+The Remittance Optimizer is a small Spring Boot system split into two microservices. A user enters how much money they want to send, where they're sending it from, and what matters most to them (cheapest, fastest, or balanced). The system then ranks available remittance channels and recommends the best one.
 
 ### Main Components
 
 ```
-┌─────────────────────────────────────┐
-│  Frontend: static/index.html        │  ← Single-page form, custom CSS/JS
-└─────────────┬───────────────────────┘
-              │ POST /api/remittance/compare
-              ▼
-┌─────────────────────────────────────┐
-│  Controller: RemittanceController   │  ← REST entry point
-└─────────────┬───────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────┐
-│  Service: ComparisonService         │  ← Business logic, ranking, scoring
-└─────────────┬───────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────┐
-│  DTOs: Request / Result / Response  │  ← Data shapes passed around
-└─────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Frontend: remittance-api/src/main/resources/static/index.html │  ← Single-page form
+└─────────────────────────┬───────────────────────────────────┘
+                          │ POST /api/remittance/compare
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  remittance-api (port 8080)                                  │
+│  ├─ RemittanceController — public REST entry point           │
+│  ├─ RemittanceService — calls rate-service, builds recommendation │
+│  └─ RestTemplateConfig — service-to-service HTTP client      │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ POST /api/rates/compare
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  rate-service (port 8081)                                    │
+│  ├─ RateController — internal REST entry point               │
+│  ├─ ComparisonService — channel data, financial math, ranking │
+│  └─ CorsConfig — allows cross-origin calls from localhost:8080 │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 | Layer | Responsibility |
 |-------|----------------|
-| **Controller** | Receives HTTP requests, validates input, delegates to the service, returns JSON |
-| **Service** | Holds channel data, performs financial math, ranks results, builds recommendation text |
-| **DTOs** | Plain data objects that define the API contract between frontend and backend |
-| **Frontend** | Static HTML/CSS/JS page served from `src/main/resources/static` |
+| **remittance-api Controller** | Receives public HTTP requests, validates input, delegates to RemittanceService |
+| **remittance-api Service** | Calls `rate-service`, takes ranked results, and builds the recommendation text |
+| **rate-service Controller** | Receives internal HTTP requests from `remittance-api` |
+| **rate-service Service** | Holds channel data, performs financial math, ranks results |
+| **DTOs** | Plain data objects that define the API contract between frontend, remittance-api, and rate-service |
+| **Frontend** | Static HTML/CSS/JS page served from `remittance-api/src/main/resources/static` |
 
 ---
 
@@ -54,10 +57,13 @@ The browser reads the form fields:
 It assembles a JSON body and sends it via `POST` to `/api/remittance/compare`.
 
 ### Step 2 — Controller receives the request
-`RemittanceController.compare(...)` accepts a `RemittanceRequest` object. Spring Boot automatically deserializes the incoming JSON into this DTO. The controller then calls `comparisonService.compare(request)`.
+`RemittanceController.compare(...)` accepts a `RemittanceRequest` object. Spring Boot automatically deserializes the incoming JSON into this DTO. The controller then calls `remittanceService.compare(request)`.
 
-### Step 3 — Service calculates channel results
-`ComparisonService.compare(...)` loops through the five supported channels:
+### Step 3 — remittance-api delegates to rate-service
+`RemittanceService.compare(...)` forwards the request to `rate-service` at `POST /api/rates/compare` using `RestTemplate`. It validates the response and converts the returned `RemittanceResult[]` into a `List<RemittanceResult>`.
+
+### Step 4 — rate-service calculates and ranks channel results
+Inside `rate-service`, `ComparisonService.compare(...)` loops through the five supported channels:
 
 - Bank Wire
 - Western Union
@@ -79,7 +85,7 @@ The service sorts the list of results based on the user's selected priority:
 - **BALANCED** → combined score of normalized amount and speed
 
 ### Step 5 — Recommendation text is generated
-The service builds a plain-language sentence explaining why the top result is best, phrased according to the selected priority.
+Back in `remittance-api`, `RemittanceService.buildRecommendation(...)` builds a plain-language sentence explaining why the top result is best, phrased according to the selected priority.
 
 ### Step 6 — Response returns to frontend
 A `RemittanceResponse` is returned containing:
@@ -249,15 +255,52 @@ The single HTML page could become a React/Vue/Angular app or a mobile app, hoste
 
 ## Quick Start
 
-To run locally:
+To run locally you need **two terminals** because there are now two services.
+
+### 1. Build everything
 
 ```powershell
 $env:JAVA_HOME = "C:\Program Files\Microsoft\jdk-17.0.20.101-hotspot"
-.\mvnw.cmd spring-boot:run
+.\mvnw.cmd clean install -DskipTests
 ```
 
-Then open `http://localhost:8080` in your browser.
+### 2. Start rate-service first
+
+`rate-service` must be up before `remittance-api` can call it.
+
+```powershell
+.\mvnw.cmd spring-boot:run -pl rate-service
+```
+
+Wait for `Tomcat started on port 8081`.
+
+### 3. Start remittance-api second
+
+In a second terminal:
+
+```powershell
+.\mvnw.cmd spring-boot:run -pl remittance-api
+```
+
+Wait for `Tomcat started on port 8080`.
+
+### 4. Open the app
+
+Browse to `http://localhost:8080`.
+
+You can also hit the public API directly:
+
+```powershell
+$body = @{ amount=500; sourceCountry="USA"; sourceCurrency="USD"; destinationCountry="Pakistan"; destinationCurrency="PKR"; priority="CHEAPEST" } | ConvertTo-Json -Compress
+Invoke-WebRequest -Uri http://localhost:8080/api/remittance/compare -Method POST -ContentType 'application/json' -Body $body -UseBasicParsing
+```
+
+Or query `rate-service` directly on port `8081`:
+
+```powershell
+Invoke-WebRequest -Uri http://localhost:8081/api/rates/compare -Method POST -ContentType 'application/json' -Body $body -UseBasicParsing
+```
 
 ---
 
-That's the whole system. The code intentionally keeps business logic centralized in `ComparisonService` so the ranking rules are easy to find and modify as new channels or priorities are added.
+That's the whole system. Channel data and ranking rules live in `rate-service`, while presentation and recommendation text live in `remittance-api`. This split keeps core rate logic isolated and makes it easy to add new channels, swap in a live FX provider, or change the frontend independently.

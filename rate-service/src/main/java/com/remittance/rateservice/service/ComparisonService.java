@@ -1,6 +1,6 @@
-package com.remittance.optimizer.service;
+package com.remittance.rateservice.service;
 
-import com.remittance.optimizer.dto.*;
+import com.remittance.rateservice.dto.*;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -42,7 +42,7 @@ public class ComparisonService {
             new ChannelData("Remitly",             new BigDecimal("0.008"), new BigDecimal("5.00"),  FeeType.FLAT,       "Minutes to 1 day")
     );
 
-    public RemittanceResponse compare(RemittanceRequest request) {
+    public List<RemittanceResult> compare(RemittanceRequest request) {
         validateRequest(request);
 
         BigDecimal amount = request.getAmount();
@@ -57,18 +57,7 @@ public class ComparisonService {
         }
 
         sortByPriority(results, priority);
-
-        RemittanceResult bestChannel = results.get(0);
-        RemittanceResult worstChannel = results.get(results.size() - 1);
-
-        String recommendation = buildRecommendation(bestChannel, worstChannel, amount, priority);
-
-        return RemittanceResponse.builder()
-                .originalRequest(request)
-                .results(results)
-                .bestChannel(bestChannel)
-                .recommendation(recommendation)
-                .build();
+        return results;
     }
 
     private void validateRequest(RemittanceRequest request) {
@@ -201,38 +190,5 @@ public class ComparisonService {
                 .amountReceived(amountReceived)
                 .estimatedSpeed(ch.speed())
                 .build();
-    }
-
-    // ---- Recommendation text ----
-
-    private String buildRecommendation(RemittanceResult best, RemittanceResult worst,
-                                       BigDecimal amount, Priority priority) {
-        return switch (priority) {
-            case CHEAPEST -> {
-                BigDecimal savings = computeSavings(best, worst);
-                yield String.format(
-                        "%s is the best option for sending $%s — you'll receive %s PKR, which is %s PKR more than %s (the most expensive option).",
-                        best.getChannelName(), amount.toPlainString(),
-                        best.getAmountReceived().toPlainString(),
-                        savings.toPlainString(), worst.getChannelName());
-            }
-            case FASTEST -> String.format(
-                    "Based on your priority for speed, %s is your best option — it's %s and you'll still receive %s PKR.",
-                    best.getChannelName(), best.getEstimatedSpeed().toLowerCase(),
-                    best.getAmountReceived().toPlainString());
-            case BALANCED -> {
-                BigDecimal savings = computeSavings(best, worst);
-                yield String.format(
-                        "%s offers the best balance of speed and value for $%s — delivering %s PKR in %s, saving you %s PKR over %s.",
-                        best.getChannelName(), amount.toPlainString(),
-                        best.getAmountReceived().toPlainString(),
-                        best.getEstimatedSpeed().toLowerCase(),
-                        savings.toPlainString(), worst.getChannelName());
-            }
-        };
-    }
-
-    private BigDecimal computeSavings(RemittanceResult best, RemittanceResult worst) {
-        return best.getAmountReceived().subtract(worst.getAmountReceived());
     }
 }
