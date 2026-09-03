@@ -12,8 +12,14 @@ import java.util.stream.Collectors;
 @Service
 public class ComparisonService {
 
-    // Fixed mock market rate: 1 USD = 278 PKR (to be replaced with live FX API later)
-    private static final BigDecimal MARKET_RATE = new BigDecimal("278.00");
+    // Mock base market rates by source currency (to be replaced with live FX API later)
+    private static final Map<String, BigDecimal> MARKET_RATES = Map.of(
+            "USD", new BigDecimal("278.00"),
+            "GBP", new BigDecimal("353.00"),
+            "AED", new BigDecimal("75.70"),
+            "SAR", new BigDecimal("74.10"),
+            "CAD", new BigDecimal("203.00")
+    );
 
     private static final MathContext MC = new MathContext(10, RoundingMode.HALF_UP);
     private static final int SCALE = 2;
@@ -48,8 +54,11 @@ public class ComparisonService {
         BigDecimal amount = request.getAmount();
         Priority priority = request.getPriority() != null ? request.getPriority() : Priority.CHEAPEST;
 
+        String sourceCurrency = request.getSourceCurrency();
+        BigDecimal marketRate = MARKET_RATES.get(sourceCurrency.toUpperCase());
+
         List<RemittanceResult> results = CHANNELS.stream()
-                .map(ch -> buildChannelResult(ch, amount))
+                .map(ch -> buildChannelResult(ch, amount, marketRate))
                 .collect(Collectors.toCollection(ArrayList::new));
 
         if (results.isEmpty()) {
@@ -76,8 +85,9 @@ public class ComparisonService {
         if (request.getSourceCurrency() == null || request.getSourceCurrency().isBlank()) {
             throw new IllegalArgumentException("Source currency is required");
         }
-        if (!"USD".equalsIgnoreCase(request.getSourceCurrency())) {
-            throw new IllegalArgumentException("Only USD is supported as the source currency in this demo");
+        if (!MARKET_RATES.containsKey(request.getSourceCurrency().toUpperCase())) {
+            throw new IllegalArgumentException(
+                    "We don't currently support transfers from " + request.getSourceCurrency().toUpperCase() + " yet.");
         }
         if (request.getDestinationCurrency() == null || request.getDestinationCurrency().isBlank()) {
             throw new IllegalArgumentException("Destination currency is required");
@@ -164,9 +174,9 @@ public class ComparisonService {
 
     // ---- Channel calculation ----
 
-    private RemittanceResult buildChannelResult(ChannelData ch, BigDecimal amount) {
+    private RemittanceResult buildChannelResult(ChannelData ch, BigDecimal amount, BigDecimal marketRate) {
         // Channel exchange rate = market rate * (1 - discount)
-        BigDecimal channelRate = MARKET_RATE.multiply(BigDecimal.ONE.subtract(ch.rateDiscount()), MC)
+        BigDecimal channelRate = marketRate.multiply(BigDecimal.ONE.subtract(ch.rateDiscount()), MC)
                 .setScale(4, RoundingMode.HALF_UP);
 
         // Calculate fee in source currency

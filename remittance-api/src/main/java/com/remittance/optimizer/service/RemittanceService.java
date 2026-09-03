@@ -58,7 +58,7 @@ public class RemittanceService {
             return Arrays.asList(response.getBody());
         } catch (HttpStatusCodeException ex) {
             String message = extractErrorMessage(ex);
-            throw new IllegalArgumentException("Rate service rejected the request: " + message, ex);
+            throw new IllegalArgumentException(message, ex);
         } catch (ResourceAccessException ex) {
             throw new IllegalStateException("Rate service is currently unavailable. Please try again later.", ex);
         } catch (RestClientException ex) {
@@ -70,6 +70,16 @@ public class RemittanceService {
         String body = ex.getResponseBodyAsString();
         if (body == null || body.isBlank()) {
             return ex.getStatusCode().toString();
+        }
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            java.util.Map<?, ?> map = mapper.readValue(body, java.util.Map.class);
+            Object error = map.get("error");
+            if (error != null) {
+                return error.toString();
+            }
+        } catch (Exception ignored) {
+            // Fall back to raw body if JSON parsing fails
         }
         return body;
     }
