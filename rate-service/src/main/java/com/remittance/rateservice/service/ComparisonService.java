@@ -42,10 +42,10 @@ public class ComparisonService {
 
     private static final List<ChannelData> CHANNELS = List.of(
             new ChannelData("Bank Wire",           new BigDecimal("0.015"), new BigDecimal("30.00"), FeeType.FLAT,       "2-5 days"),
-            new ChannelData("Western Union",       new BigDecimal("0.010"), new BigDecimal("8.00"),  FeeType.FLAT,       "Minutes to 1 day"),
+            new ChannelData("Western Union",       new BigDecimal("0.018"), new BigDecimal("8.00"),  FeeType.FLAT,       "Minutes to 1 day"),
             new ChannelData("Wise",                new BigDecimal("0.003"), new BigDecimal("0.006"), FeeType.PERCENTAGE, "1-2 days"),
-            new ChannelData("JazzCash/Easypaisa",  new BigDecimal("0.005"), new BigDecimal("2.00"),  FeeType.FLAT,       "Instant"),
-            new ChannelData("Remitly",             new BigDecimal("0.008"), new BigDecimal("5.00"),  FeeType.FLAT,       "Minutes to 1 day")
+            new ChannelData("JazzCash/Easypaisa",  new BigDecimal("0.025"), new BigDecimal("2.00"),  FeeType.FLAT,       "Instant"),
+            new ChannelData("Remitly",             new BigDecimal("0.012"), new BigDecimal("5.00"),  FeeType.FLAT,       "Minutes to 1 day")
     );
 
     public List<RemittanceResult> compare(RemittanceRequest request) {
